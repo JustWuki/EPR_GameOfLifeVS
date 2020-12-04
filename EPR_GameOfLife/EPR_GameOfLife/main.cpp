@@ -5,17 +5,9 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <omp.h>
 #include "Timing.h"
 using namespace std;
-
-// func declarations
-char** initGrid(int arrayWidth, int arrayHeight);
-void deinitArray(char** grid);
-void printArray(char** grid, int arrayWidth, int arrayHeight);
-char** nextGeneration(char** grid, int arrayWidth, int arrayHeight);
-char** createGridFromFile(string fileName);
-void writeGridToFile(char** grid, string fileName);
-void compGrids(char** gridOne, char** gridTwo);
 
 // gloabal vars
 char dead = '.';
@@ -25,82 +17,30 @@ int arrayWidth = 0;
 int generations = 250;
 string inFile;
 string outFile;
-bool measure = false;
+bool measure = true;
+int mode = 0;
 
-void print_usage() {
-	std::cerr << "Usage: gol --load inFile.gol --save outFile.gol --generations number [--measure]" << std::endl;
-}
-
-int main(int argc, char* argv[]) 
+char** initGrid(int arrayWidth, int arrayHeight)
 {
-	//compGrids(createGridFromFile("random250_out.gol"), createGridFromFile("write.txt"));
-	//return 0;
-	if (argc < 6) {
-		print_usage();
-		return 1;
-	}
-
-	for (int i = 1; i < argc; i++) {
-		if (std::string(argv[i]) == "--load") {
-			if (i + 1 < argc) {
-				inFile = argv[i + 1];
-			}
-			else {
-				print_usage();
-				return 1;
-			}
-		}
-		else if (std::string(argv[i]) == "--save") {
-			if (i + 1 < argc) {
-				outFile = argv[i + 1];
-			}
-			else {
-				print_usage();
-				return 1;
-			}
-		}
-		else if (std::string(argv[i]) == "--generations") {
-			if (i + 1 < argc) {
-				generations = std::stoi(argv[i + 1]);
-			}
-			else {
-				print_usage();
-				return 1;
-			}
-		}
-		else if (std::string(argv[i]) == "--measure") {
-			measure = true;
-		}
-	}
-	// start the Timing class
-	Timing* timer = Timing::getInstance();
-
-	timer->startSetup();
-	char** grid = createGridFromFile(inFile);
-
-	timer->stopSetup();
-
-	timer->startComputation();
-	for (int i = 0; i < generations; i++)
+	char** cellsArray;
+	cellsArray = new char* [arrayHeight];
+	for (int i = 0; i < arrayHeight; i++)
 	{
-		grid = nextGeneration(grid, arrayWidth, arrayHeight);
+		cellsArray[i] = new char[arrayWidth];
 	}
-	timer->stopComputation();
 
-	timer->startFinalization();
-	writeGridToFile(grid, outFile);
-	timer->stopFinalization();
-
-	// Print timing results
-	if (measure) {
-		cout << timer->getResults() << endl;
-	}
-	deinitArray(grid);
-
-	return 0;
+	return cellsArray;
 }
 
-void writeGridToFile(char** grid, string fileName) 
+void deinitGrid(char** grid)
+{
+	for (int i = 0; i < arrayHeight; ++i) {
+		delete[] grid[i];
+	}
+	delete[] grid;
+}
+
+void writeGridToFile(char** grid, string fileName)
 {
 	ofstream output(fileName);
 	if (output.is_open() && output.good())
@@ -139,7 +79,7 @@ char** createGridFromFile(string fileName)
 		for (int i; ss >> i;)
 		{
 			gridSizeValues.push_back(i);
-			if (ss.peek() == ',') 
+			if (ss.peek() == ',')
 			{
 				ss.ignore();
 			}
@@ -157,8 +97,8 @@ char** createGridFromFile(string fileName)
 				input >> grid[i][j];
 			}
 		}
-	} 
-	else 
+	}
+	else
 	{
 		std::cout << "Input file could not be opened. Invalid filename or destination";
 		exit(0);
@@ -168,27 +108,7 @@ char** createGridFromFile(string fileName)
 	return grid;
 }
 
-char** initGrid(int arrayWidth, int arrayHeight)
-{
-	char** cellsArray;
-	cellsArray = new char* [arrayHeight];
-	for (int i = 0; i < arrayHeight; i++)
-	{
-		cellsArray[i] = new char[arrayWidth];
-	}
-
-	return cellsArray;
-}
-
-void deinitArray(char** grid) 
-{
-	for (int i = 0; i < arrayHeight; ++i) {
-		delete[] grid[i];
-	}
-	delete[] grid;
-}
-
-void printArray(char** grid, int arrayWidth, int arrayHeight)
+void printGrid(char** grid, int arrayWidth, int arrayHeight)
 {
 	for (int i = 0; i < arrayHeight; i++)
 	{
@@ -255,13 +175,13 @@ char** nextGeneration(char** grid, int arrayWidth, int arrayHeight)
 				grid[i][j] = grid[i][j];
 		}
 	}
-	deinitArray(aliveNeighbours);
+	deinitGrid(aliveNeighbours);
 
 	return grid;
 }
 
 // compare if grid values match
-void compGrids(char** gridOne, char** gridTwo) 
+void compGrids(char** gridOne, char** gridTwo)
 {
 	int count = 0;
 	for (int i = 0; i < arrayHeight; i++)
@@ -278,4 +198,114 @@ void compGrids(char** gridOne, char** gridTwo)
 		}
 	}
 	cout << "The grids are matching" << endl;
+}
+
+void print_usage() {
+	std::cerr << "Usage: gol --load inFile.gol --save outFile.gol --generations number [--measure]" << std::endl;
+}
+
+int main(int argc, char* argv[]) 
+{
+	//compGrids(createGridFromFile("random1500_out.gol"), createGridFromFile("test.txt"));
+	//return 0;
+	/*if (argc < 6) {
+		print_usage();
+		return 1;
+	}
+
+	for (int i = 1; i < argc; i++) {
+		if (std::string(argv[i]) == "--seq") {
+			mode = 1;
+		}
+		else if (std::string(argv[i]) == "--omp") {
+			mode = 2;
+		}
+		else if (std::string(argv[i]) == "--ocl") {
+			if (i + 1 < argc && argv[i + 1] == "cpu") {
+				mode = 3;
+			}
+			if (i + 1 < argc && argv[i + 1] == "gpu") {
+				mode = 4;
+			}
+		}
+		else if (std::string(argv[i]) == "--load") {
+			if (i + 1 < argc) {
+				inFile = argv[i + 1];
+			}
+			else {
+				print_usage();
+				return 1;
+			}
+		}
+		else if (std::string(argv[i]) == "--save") {
+			if (i + 1 < argc) {
+				outFile = argv[i + 1];
+			}
+			else {
+				print_usage();
+				return 1;
+			}
+		}
+		else if (std::string(argv[i]) == "--generations") {
+			if (i + 1 < argc) {
+				generations = std::stoi(argv[i + 1]);
+			}
+			else {
+				print_usage();
+				return 1;
+			}
+		}
+		else if (std::string(argv[i]) == "--measure") {
+			measure = true;
+		}
+	}*/
+	// start the Timing class
+	Timing* timer = Timing::getInstance();
+
+	timer->startSetup();
+	char** grid = createGridFromFile("random1500_in.gol");
+
+	timer->stopSetup();
+
+	/*switch (mode) {
+		case 1:
+			timer->startComputation();
+			for (int i = 0; i < generations; i++)
+			{
+				grid = nextGeneration(grid, arrayWidth, arrayHeight);
+			}
+			timer->stopComputation();
+			break;
+		case 2:
+			timer->startComputation();
+			#pragma omp parallel for
+				for (int i = 0; i < generations; i++)
+				{
+					grid = nextGeneration(grid, arrayWidth, arrayHeight);
+				}	
+			timer->stopComputation();
+			break;
+	}*/
+
+	timer->startComputation();
+	#pragma omp parallel for
+	for (int i = 0; i < generations; i++)
+	{
+		grid = nextGeneration(grid, arrayWidth, arrayHeight);
+	}
+	timer->stopComputation();
+	
+
+	//timer->startFinalization();
+	//writeGridToFile(grid, outFile);
+	writeGridToFile(grid, "test.txt");
+	//timer->stopFinalization();
+
+	// Print timing results
+	if (measure) {
+		cout << timer->getResults() << endl;
+	}
+	deinitGrid(grid);
+
+	return 0;
 }
